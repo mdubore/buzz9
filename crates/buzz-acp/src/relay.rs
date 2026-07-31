@@ -4009,6 +4009,41 @@ mod tests {
     use super::*;
 
     #[test]
+    fn buzz_acp_websocket_uses_native_root_certificates() {
+        let manifest: toml::Value =
+            toml::from_str(include_str!("../../../Cargo.toml")).expect("valid workspace manifest");
+        let features = manifest["workspace"]["dependencies"]["tokio-tungstenite"]["features"]
+            .as_array()
+            .expect("tokio-tungstenite features");
+        let feature_names = features
+            .iter()
+            .filter_map(toml::Value::as_str)
+            .collect::<Vec<_>>();
+
+        assert!(
+            feature_names.contains(&"rustls-tls-native-roots"),
+            "buzz-acp must load OS roots so trusted private CAs such as StartOS work; got {feature_names:?}"
+        );
+        assert!(
+            !feature_names.contains(&"rustls-tls-webpki-roots"),
+            "buzz-acp must not be limited to public WebPKI roots; got {feature_names:?}"
+        );
+    }
+
+    #[tokio::test]
+    #[ignore = "requires BUZZ_TEST_WSS_URL pointing to a trusted external relay"]
+    async fn external_wss_relay_uses_native_trust_store() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let url = std::env::var("BUZZ_TEST_WSS_URL")
+            .expect("BUZZ_TEST_WSS_URL must identify a trusted WSS relay");
+        let (mut socket, _) = tokio_tungstenite::connect_async(&url)
+            .await
+            .expect("buzz-acp WebSocket TLS handshake should succeed");
+
+        socket.close(None).await.expect("WebSocket should close");
+    }
+
+    #[test]
     fn relay_ws_to_http_plain() {
         assert_eq!(
             relay_ws_to_http("ws://localhost:3000"),
